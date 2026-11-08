@@ -57,6 +57,8 @@ python "ci_patch_v050\patch_version_60.py" "%PROJECT%"
 if errorlevel 1 exit /b 1
 python "ci_patch_v050\patch_android_ffmpeg_arguments.py" "%PROJECT%"
 if errorlevel 1 exit /b 1
+python "ci_patch_v050\patch_effect_timing_and_intensity.py" "%PROJECT%"
+if errorlevel 1 exit /b 1
 
 if not exist "%PROJECT%\test" mkdir "%PROJECT%\test"
 copy /Y "ci_patch_v050\functional_persistence_test.dart" "%PROJECT%\test\functional_persistence_test.dart" >nul
