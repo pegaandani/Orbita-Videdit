@@ -1,0 +1,381 @@
+--- a/lib/features/editor/widgets/filter_panel.dart
++++ b/lib/features/editor/widgets/filter_panel.dart
+@@ -6,6 +6,24 @@
+   final TimelineClip? clip;
+   final VoidCallback onChanged;
+ 
++  static const presets = <({String id, String label})>[
++    (id: 'cinema', label: 'Cine'),
++    (id: 'deepBlack', label: 'Negros intensos'),
++    (id: 'bw', label: 'Blanco y negro'),
++    (id: 'noir', label: 'Noir'),
++    (id: 'vintage', label: 'Vintage'),
++    (id: 'sepia', label: 'Sepia'),
++    (id: 'tealOrange', label: 'Teal & Orange'),
++    (id: 'bleach', label: 'Bleach bypass'),
++    (id: 'soft', label: 'Suave'),
++    (id: 'dream', label: 'Ensueño'),
++    (id: 'pastel', label: 'Pastel'),
++    (id: 'sunset', label: 'Atardecer'),
++    (id: 'warm', label: 'Cálido'),
++    (id: 'cool', label: 'Frío'),
++    (id: 'vivid', label: 'Vívido'),
++  ];
++
+   Map<String, dynamic> _colorEffect(TimelineClip c) {
+     for (final e in c.effects) {
+       if (e['type'] == 'color') return e;
+@@ -22,9 +40,17 @@
+     return e;
+   }
+ 
+-  void _setPreset(TimelineClip c, String id) {
++  bool _isPresetActive(TimelineClip c, String id) =>
++      c.effects.any((e) => e['type'] == 'preset' && e['id'] == id);
++
++  void _togglePreset(TimelineClip c, String id, bool enabled) {
++    c.effects.removeWhere((e) => e['type'] == 'preset' && e['id'] == id);
++    if (enabled) c.effects.add({'type': 'preset', 'id': id});
++    onChanged();
++  }
++
++  void _clearPresets(TimelineClip c) {
+     c.effects.removeWhere((e) => e['type'] == 'preset');
+-    if (id != 'none') c.effects.add({'type': 'preset', 'id': id});
+     onChanged();
+   }
+ 
+@@ -38,62 +64,57 @@
+       ));
+     }
+     final color = _colorEffect(c);
+-    return ListView(
+-      padding: const EdgeInsets.all(14),
+-      children: [
+-        const Text('Filtros', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+-        const SizedBox(height: 10),
+-        Wrap(spacing: 8, runSpacing: 8, children: [
+-          _preset(context, c, 'none', 'Original'),
+-          _preset(context, c, 'cinema', 'Cine'),
+-          _preset(context, c, 'deepBlack', 'Negros intensos'),
+-          _preset(context, c, 'bw', 'Blanco y negro'),
+-          _preset(context, c, 'noir', 'Noir'),
+-          _preset(context, c, 'vintage', 'Vintage'),
+-          _preset(context, c, 'sepia', 'Sepia'),
+-          _preset(context, c, 'tealOrange', 'Teal & Orange'),
+-          _preset(context, c, 'bleach', 'Bleach bypass'),
+-          _preset(context, c, 'soft', 'Suave'),
+-          _preset(context, c, 'dream', 'Ensueño'),
+-          _preset(context, c, 'pastel', 'Pastel'),
+-          _preset(context, c, 'sunset', 'Atardecer'),
+-          _preset(context, c, 'warm', 'Cálido'),
+-          _preset(context, c, 'cool', 'Frío'),
+-          _preset(context, c, 'vivid', 'Vívido'),
+-        ]),
+-        const SizedBox(height: 18),
+-        const Text('Ajustes manuales', style: TextStyle(fontWeight: FontWeight.w700)),
+-        _slider('Brillo', color, 'brightness', -1, 1),
+-        _slider('Contraste', color, 'contrast', 0, 2),
+-        _slider('Saturación', color, 'saturation', 0, 3),
+-        _slider('Tonalidad', color, 'hue', -180, 180, suffix: '°'),
+-        _slider('Temperatura', color, 'temperature', -1, 1),
+-        const SizedBox(height: 8),
+-        OutlinedButton.icon(
+-          onPressed: () {
+-            color
+-              ..['brightness'] = 0.0
+-              ..['contrast'] = 1.0
+-              ..['saturation'] = 1.0
+-              ..['hue'] = 0.0
+-              ..['temperature'] = 0.0;
+-            c.effects.removeWhere((e) => e['type'] == 'preset');
+-            onChanged();
+-          },
+-          icon: const Icon(Icons.restart_alt),
+-          label: const Text('Restablecer color'),
+-        ),
+-      ],
+-    );
+-  }
+-
+-  Widget _preset(BuildContext context, TimelineClip c, String id, String label) {
+-    final selected = c.effects.any((e) => e['type'] == 'preset' && e['id'] == id) ||
+-        (id == 'none' && !c.effects.any((e) => e['type'] == 'preset'));
+-    return ChoiceChip(
+-      label: Text(label),
+-      selected: selected,
+-      onSelected: (_) => _setPreset(c, id),
++    final activeCount = c.effects.where((e) => e['type'] == 'preset').length;
++    return Scrollbar(
++      thumbVisibility: true,
++      child: ListView(
++        padding: const EdgeInsets.all(14),
++        children: [
++          const Text('Filtros', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
++          const SizedBox(height: 4),
++          Text('Puedes combinar varios filtros. Activos: $activeCount'),
++          const SizedBox(height: 10),
++          Wrap(
++            spacing: 8,
++            runSpacing: 8,
++            children: [
++              FilterChip(
++                label: const Text('Original'),
++                selected: activeCount == 0,
++                onSelected: (_) => _clearPresets(c),
++              ),
++              for (final item in presets)
++                FilterChip(
++                  label: Text(item.label),
++                  selected: _isPresetActive(c, item.id),
++                  onSelected: (v) => _togglePreset(c, item.id, v),
++                ),
++            ],
++          ),
++          const SizedBox(height: 18),
++          const Text('Ajustes manuales', style: TextStyle(fontWeight: FontWeight.w700)),
++          _slider('Brillo', color, 'brightness', -1, 1),
++          _slider('Contraste', color, 'contrast', 0, 2),
++          _slider('Saturación', color, 'saturation', 0, 3),
++          _slider('Tonalidad', color, 'hue', -180, 180, suffix: '°'),
++          _slider('Temperatura', color, 'temperature', -1, 1),
++          const SizedBox(height: 8),
++          OutlinedButton.icon(
++            onPressed: () {
++              color
++                ..['brightness'] = 0.0
++                ..['contrast'] = 1.0
++                ..['saturation'] = 1.0
++                ..['hue'] = 0.0
++                ..['temperature'] = 0.0;
++              c.effects.removeWhere((e) => e['type'] == 'preset');
++              onChanged();
++            },
++            icon: const Icon(Icons.restart_alt),
++            label: const Text('Restablecer color y filtros'),
++          ),
++        ],
++      ),
+     );
+   }
+ 
+--- a/lib/features/editor/widgets/transitions_panel.dart
++++ b/lib/features/editor/widgets/transitions_panel.dart
+@@ -28,17 +28,20 @@
+     (id: 'pixelate', label: 'Pixelado', icon: Icons.grid_on),
+   ];
+ 
+-  Map<String, dynamic>? _current(TimelineClip c) {
++  List<Map<String, dynamic>> _active(TimelineClip c) =>
++      c.effects.where((e) => e['type'] == 'transition').toList();
++
++  Map<String, dynamic>? _find(TimelineClip c, String id) {
+     for (final e in c.effects) {
+-      if (e['type'] == 'transition') return e;
++      if (e['type'] == 'transition' && e['id'] == id) return e;
+     }
+     return null;
+   }
+ 
+-  void _set(TimelineClip c, String? id) {
++  void _toggle(TimelineClip c, String id, bool enabled) {
+     onEditStarted?.call();
+-    c.effects.removeWhere((e) => e['type'] == 'transition');
+-    if (id != null) {
++    c.effects.removeWhere((e) => e['type'] == 'transition' && e['id'] == id);
++    if (enabled) {
+       c.effects.add({'type': 'transition', 'id': id, 'duration': .45});
+     }
+     onChanged();
+@@ -52,52 +55,72 @@
+       return const Center(
+         child: Padding(
+           padding: EdgeInsets.all(22),
+-          child: Text('Selecciona un clip de video, imagen o GIF para aplicar una transición.', textAlign: TextAlign.center),
++          child: Text('Selecciona un clip de video, imagen o GIF para aplicar transiciones.', textAlign: TextAlign.center),
+         ),
+       );
+     }
+-    final current = _current(c);
+-    final selected = current?['id'] as String?;
+-    final duration = ((current?['duration'] as num?)?.toDouble() ?? .45).clamp(.15, 2.0).toDouble();
+-    return ListView(
+-      padding: const EdgeInsets.all(14),
+-      children: [
+-        const Text('Transiciones', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+-        const SizedBox(height: 4),
+-        const Text('10 transiciones. Se aplican al inicio del clip seleccionado.'),
+-        const SizedBox(height: 12),
+-        for (final item in transitions)
+-          RadioListTile<String>(
+-            value: item.id,
+-            groupValue: selected,
+-            secondary: Icon(item.icon),
+-            title: Text(item.label),
+-            onChanged: (v) => _set(c, v),
+-          ),
+-        if (current != null) ...[
+-          const Divider(height: 28),
+-          Row(children: [
+-            const Expanded(child: Text('Duración')),
+-            Text('${duration.toStringAsFixed(2)} s'),
+-          ]),
+-          Slider(
+-            value: duration,
+-            min: .15,
+-            max: 2.0,
+-            onChangeStart: (_) => onEditStarted?.call(),
+-            onChanged: (v) {
+-              current['duration'] = v;
+-              onChanged();
+-            },
+-            onChangeEnd: (_) => onEditEnded?.call(),
+-          ),
+-          OutlinedButton.icon(
+-            onPressed: () => _set(c, null),
+-            icon: const Icon(Icons.close),
+-            label: const Text('Quitar transición'),
+-          ),
++    final active = _active(c);
++    return Scrollbar(
++      thumbVisibility: true,
++      child: ListView(
++        padding: const EdgeInsets.all(14),
++        children: [
++          const Text('Transiciones', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
++          const SizedBox(height: 4),
++          Text('Puedes combinar varias transiciones al inicio del clip. Activas: ${active.length}'),
++          const SizedBox(height: 10),
++          for (final item in transitions) ...[
++            Builder(builder: (_) {
++              final effect = _find(c, item.id);
++              final enabled = effect != null;
++              final duration = ((effect?['duration'] as num?)?.toDouble() ?? .45).clamp(.15, 2.0).toDouble();
++              return Column(
++                crossAxisAlignment: CrossAxisAlignment.start,
++                children: [
++                  SwitchListTile(
++                    value: enabled,
++                    secondary: Icon(item.icon),
++                    title: Text(item.label),
++                    onChanged: (v) => _toggle(c, item.id, v),
++                  ),
++                  if (enabled)
++                    Padding(
++                      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
++                      child: Column(children: [
++                        Row(children: [
++                          const Expanded(child: Text('Duración')),
++                          Text('${duration.toStringAsFixed(2)} s'),
++                        ]),
++                        Slider(
++                          value: duration,
++                          min: .15,
++                          max: 2.0,
++                          onChangeStart: (_) => onEditStarted?.call(),
++                          onChanged: (v) {
++                            effect!['duration'] = v;
++                            onChanged();
++                          },
++                          onChangeEnd: (_) => onEditEnded?.call(),
++                        ),
++                      ]),
++                    ),
++                ],
++              );
++            }),
++          ],
++          if (active.isNotEmpty)
++            OutlinedButton.icon(
++              onPressed: () {
++                onEditStarted?.call();
++                c.effects.removeWhere((e) => e['type'] == 'transition');
++                onChanged();
++                onEditEnded?.call();
++              },
++              icon: const Icon(Icons.close),
++              label: const Text('Quitar todas las transiciones'),
++            ),
+         ],
+-      ],
++      ),
+     );
+   }
+ }
+--- a/lib/core/services/timeline_render_service.dart
++++ b/lib/core/services/timeline_render_service.dart
+@@ -113,11 +113,13 @@
+         final animatedScaleExpr = _transformExpr(c, 'scale', c.scale, timeVariable: 't');
+         final animatedRotationExpr = _transformExpr(c, 'rotation', c.rotation, timeVariable: 't');
+         var scaleExpr = _faceTrackExpr(c, 'scale', timeVariable: 't') ?? animatedScaleExpr;
+-        final transition = _transitionFor(c);
+-        final transitionId = transition?['id'] as String?;
+-        final transitionProgress = _transitionProgressExpr(c, startSec);
+-        if (transitionId == 'zoomIn') {
+-          scaleExpr = "($scaleExpr)*(0.72+0.28*($transitionProgress))";
++        final transitions = _transitionsFor(c);
++        for (final transition in transitions) {
++          final transitionId = transition['id'] as String?;
++          final transitionProgress = _transitionProgressExprFor(transition, startSec);
++          if (transitionId == 'zoomIn') {
++            scaleExpr = "($scaleExpr)*(0.72+0.28*($transitionProgress))";
++          }
+         }
+         final rotationExpr = _faceTrackExpr(c, 'rotation', timeVariable: 't') ?? animatedRotationExpr;
+         final opacityExpr = _transformExpr(c, 'opacity', c.opacity, timeVariable: 'T');
+@@ -136,14 +138,18 @@
+         final animatedYExpr = _transformExpr(c, 'y', c.y, timeVariable: 't');
+         var xExpr = _faceTrackExpr(c, 'x', c.x, timeVariable: 't') ?? animatedXExpr;
+         var yExpr = _faceTrackExpr(c, 'y', c.y, timeVariable: 't') ?? animatedYExpr;
+-        if (transitionId == 'slideLeft') {
+-          xExpr = "($xExpr)+(1-($transitionProgress))*1.15";
+-        } else if (transitionId == 'slideRight') {
+-          xExpr = "($xExpr)-(1-($transitionProgress))*1.15";
+-        } else if (transitionId == 'wipeUp') {
+-          yExpr = "($yExpr)+(1-($transitionProgress))*1.15";
+-        } else if (transitionId == 'wipeDown') {
+-          yExpr = "($yExpr)-(1-($transitionProgress))*1.15";
++        for (final transition in transitions) {
++          final transitionId = transition['id'] as String?;
++          final transitionProgress = _transitionProgressExprFor(transition, startSec);
++          if (transitionId == 'slideLeft') {
++            xExpr = "($xExpr)+(1-($transitionProgress))*1.15";
++          } else if (transitionId == 'slideRight') {
++            xExpr = "($xExpr)-(1-($transitionProgress))*1.15";
++          } else if (transitionId == 'wipeUp') {
++            yExpr = "($yExpr)+(1-($transitionProgress))*1.15";
++          } else if (transitionId == 'wipeDown') {
++            yExpr = "($yExpr)-(1-($transitionProgress))*1.15";
++          }
+         }
+         final next = 'vcomp${visualIndex++}';
+         filters.add(
+@@ -430,19 +436,19 @@
+         _ => "if(lt(($u),0.5),2*($u)*($u),1-pow(-2*($u)+2,2)/2)",
+       };
+ 
+-  Map<String, dynamic>? _transitionFor(TimelineClip c) {
+-    for (final effect in c.effects) {
+-      if (effect['type'] == 'transition') return effect;
+-    }
+-    return null;
+-  }
++  List<Map<String, dynamic>> _transitionsFor(TimelineClip c) =>
++      c.effects.where((effect) => effect['type'] == 'transition').toList();
+ 
+-  String _transitionProgressExpr(TimelineClip c, double startSec, {String timeVariable = 't'}) {
+-    final effect = _transitionFor(c);
+-    final d = ((effect?['duration'] as num?)?.toDouble() ?? .45).clamp(.15, 2.0);
++  String _transitionProgressExprFor(
++    Map<String, dynamic> effect,
++    double startSec, {
++    String timeVariable = 't',
++  }) {
++    final d = ((effect['duration'] as num?)?.toDouble() ?? .45).clamp(.15, 2.0);
+     return "max(0,min(1,($timeVariable-${_n(startSec)})/${_n(d)}))";
+   }
+ 
++
+   List<String> _videoEffects(TimelineClip c, {required double timelineStartSec, bool preserveAlpha = false}) {
+     final out = <String>[];
+     for (final effect in c.effects) {
