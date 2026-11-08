@@ -1,4 +1,4 @@
-name: Inspect video effect paths
+name: Inspect active video filters
 on:
   workflow_dispatch:
   push:
@@ -10,33 +10,26 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - name: Reconstruct patched editor and inspect relevant paths
-        run: |
+      - run: |
           python ci_patch_v050/prepare_linux_functional_test.py
           python - <<'PY'
           from pathlib import Path
-          root=Path('videdit_project/lib')
-          for rel,parts in [
-            ('features/editor/widgets/effects_panel.dart',[]),
-            ('features/editor/widgets/transitions_panel.dart',[]),
-            ('core/services/timeline_render_service.dart',['_effectFilters(', 'fade=t=out','_transitionFor(', '_fitFilters(', '_drawText(', 'for (final effect in c.effects)']),
-            ('features/editor/editor_screen.dart',['Widget _applyPreviewEffects(', 'Widget _previewTextWidget('])
-          ]:
-            lines=(root/rel).read_text().splitlines()
-            print('FILE',rel,'LINES',len(lines))
-            if not parts:
-              for i,line in enumerate(lines):
-                print(f'{i+1}: {line}')
-            else:
-              ix=set()
-              for i,line in enumerate(lines):
-                if any(p in line for p in parts):
-                  ix.update(range(max(0,i-12), min(len(lines),i+100)))
-              for i in sorted(ix):print(f'{i+1}: {lines[i]}')
+          paths = [
+            ('videdit_project/lib/core/services/timeline_render_service.dart', 902, 986),
+            ('videdit_project/lib/features/editor/editor_screen.dart', None, None)
+          ]
+          for path,start,end in paths:
+            s=Path(path).read_text().splitlines()
+            if start is None:
+              start=next(i for i,x in enumerate(s) if 'Widget _applyPreviewEffects(TimelineClip c,' in x)
+              end=next(i for i,x in enumerate(s[start:],start) if 'Widget _previewTextWidget(' in x)
+              start += 1
+            print('FILE',path)
+            for i in range(start-1,min(end,len(s))):
+              print(f'{i+1}: {s[i]}')
           PY
