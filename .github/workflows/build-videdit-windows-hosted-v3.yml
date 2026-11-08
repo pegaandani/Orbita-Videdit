@@ -1,9 +1,9 @@
-name: Build Orbita Videdit Windows V3 on GitHub
+name: Build Orbita Videdit Windows v6.0 on GitHub
 on:
   workflow_dispatch:
   push:
     branches:
-      - orbita-videdit-build-v0.5.0
+      - main
     paths:
       - '.github/workflows/build-videdit-windows-hosted-v3.yml'
       - 'ci_patch_v050/**'
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   windows-v3:
-    name: Windows V3 (GitHub-hosted)
+    name: Windows v6.0 (GitHub-hosted)
     runs-on: windows-latest
     timeout-minutes: 85
     steps:
@@ -102,7 +102,7 @@ jobs:
           $dist = Join-Path $env:GITHUB_WORKSPACE 'videdit_dist'
           New-Item -ItemType Directory -Force -Path $dist | Out-Null
           if (!(Test-Path (Join-Path $release 'OrbitaVidedit.exe'))) { throw 'OrbitaVidedit.exe missing' }
-          $portable = Join-Path $dist 'Orbita_Videdit_0.5.0_V3_Windows_Portable.zip'
+          $portable = Join-Path $dist 'Orbita_Videdit_6.0_Windows_Portable.zip'
           Compress-Archive -Path (Join-Path $release '*') -DestinationPath $portable -Force
           (Get-FileHash $portable -Algorithm SHA256).Hash | Out-File "$portable.sha256"
           $iscc = @('C:\Program Files (x86)\Inno Setup 6\ISCC.exe', 'C:\Program Files\Inno Setup 6\ISCC.exe') | Where-Object {Test-Path $_} | Select-Object -First 1
@@ -115,22 +115,22 @@ jobs:
             & $iscc 'installer\OrbitaVidedit.iss'
             $installer = Join-Path $project 'dist\Orbita_Videdit_0.5.0_Setup.exe'
             if ($LASTEXITCODE -eq 0 -and (Test-Path $installer)) {
-              Copy-Item $installer (Join-Path $dist 'Orbita_Videdit_0.5.0_V3_Setup.exe')
-              (Get-FileHash (Join-Path $dist 'Orbita_Videdit_0.5.0_V3_Setup.exe') -Algorithm SHA256).Hash | Out-File (Join-Path $dist 'Orbita_Videdit_0.5.0_V3_Setup.exe.sha256')
+              Copy-Item $installer (Join-Path $dist 'Orbita_Videdit_6.0_Setup.exe')
+              (Get-FileHash (Join-Path $dist 'Orbita_Videdit_6.0_Setup.exe') -Algorithm SHA256).Hash | Out-File (Join-Path $dist 'Orbita_Videdit_6.0_Setup.exe.sha256')
             } else { Write-Warning 'Inno installer failed, portable package is still ready' }
             Pop-Location
           } else { Write-Warning 'Inno Setup unavailable, portable EXE package is ready' }
-      - name: Publish Windows V3 to GitHub Release
+      - name: Publish Windows v6.0 to GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $tag = 'orbita-videdit-v0.5.0-v3-20261104'
+          $tag = 'orbita-videdit-v6.0.0'
           $repo = $env:GITHUB_REPOSITORY
           gh release view $tag --repo $repo *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --repo $repo --target 'orbita-videdit-build-v0.5.0' --title 'Orbita Videdit 0.5.0 V3 GitHub' --notes 'Compilaciones V3 desde GitHub-hosted runners, sin computadora personal.'
+            gh release create $tag --repo $repo --target 'main' --title 'Orbita Videdit 6.0 GitHub' --notes 'Compilaciones V3 desde GitHub-hosted runners, sin computadora personal.'
             if ($LASTEXITCODE -ne 0) {
               gh release view $tag --repo $repo
               if ($LASTEXITCODE -ne 0) { throw 'Cannot create or find Videdit release' }

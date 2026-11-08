@@ -1,9 +1,9 @@
-name: Build Orbita Videdit Android V3 Fast Ubuntu
+name: Build Orbita Videdit Android v6.0 Fast Ubuntu
 on:
   workflow_dispatch:
   push:
     branches:
-      - orbita-videdit-build-v0.5.0
+      - main
     paths:
       - '.github/workflows/build-videdit-android-ubuntu-fast.yml'
       - 'ci_patch_v050/**'
@@ -68,8 +68,8 @@ jobs:
           test "$(stat -c%s "$apk")" -gt 1000000
           unzip -t "$apk" | tail -2
           mkdir -p videdit_dist
-          cp "$apk" "videdit_dist/Orbita_Videdit_0.5.0_V3_Android.apk"
-          (cd videdit_dist && sha256sum Orbita_Videdit_0.5.0_V3_Android.apk > Orbita_Videdit_0.5.0_V3_Android.apk.sha256)
+          cp "$apk" "videdit_dist/Orbita_Videdit_6.0_Android.apk"
+          (cd videdit_dist && sha256sum Orbita_Videdit_6.0_Android.apk > Orbita_Videdit_6.0_Android.apk.sha256)
           ls -lh videdit_dist/
       - name: Publish working APK in GitHub Releases
         shell: bash
@@ -77,9 +77,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag='orbita-videdit-v0.5.0-v3-20261104'
+          tag='orbita-videdit-v6.0.0'
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --target orbita-videdit-build-v0.5.0 --title 'Orbita Videdit v0.5.0 V3' --notes 'Compilaciones verificadas de Windows y Android' || gh release view "$tag"
+            gh release create "$tag" --target main --title 'Orbita Videdit v6.0' --notes 'Compilaciones verificadas de Windows y Android' || gh release view "$tag"
           fi
           gh release upload "$tag" videdit_dist/* --clobber
           gh release view "$tag" --json url,assets
