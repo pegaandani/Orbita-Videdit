@@ -1,0 +1,130 @@
+name: Videdit UI Functional Tests Linux
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - orbita-videdit-build-v0.5.0
+    paths:
+      - '.github/workflows/videdit-ui-functional-linux.yml'
+      - 'ci_patch_v050/**'
+      - 'ci_patch/media_import_service.dart'
+      - 'ci_restore_videdit.py'
+permissions:
+  contents: write
+concurrency:
+  group: videdit-functional-linux
+  cancel-in-progress: true
+jobs:
+  functional-ui-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Rebuild exact production code and restore assets
+        run: python ci_patch_v050/prepare_linux_functional_test.py
+      - name: Resolve packages
+        working-directory: videdit_project
+        run: flutter pub get
+      - name: Analyze production source
+        working-directory: videdit_project
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Test real FFmpeg export and installed ZIP resources
+        timeout-minutes: 21
+        working-directory: videdit_project
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The GitHub Ubuntu image normally includes FFmpeg. Installing the
+          # whole Ubuntu multimedia dependency chain caused a 21-minute timeout.
+          # Fall back to a single static binary bundle if the runner lacks it.
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            bundle="$RUNNER_TEMP/ffmpeg-release-amd64-static.tar.xz"
+            curl -fL --retry 2 --connect-timeout 15 --max-time 180 \
+              "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz" \
+              -o "$bundle"
+            mkdir -p "$RUNNER_TEMP/ffmpeg"
+            tar -xJf "$bundle" -C "$RUNNER_TEMP/ffmpeg" --strip-components=1
+            export PATH="$RUNNER_TEMP/ffmpeg:$PATH"
+          fi
+          export ORBITA_FFMPEG_PATH="$(command -v ffmpeg)"
+          export ORBITA_FFPROBE_PATH="$(command -v ffprobe)"
+          test -x "$ORBITA_FFMPEG_PATH"
+          test -x "$ORBITA_FFPROBE_PATH"
+          "$ORBITA_FFMPEG_PATH" -version | head -n 1
+          "$ORBITA_FFPROBE_PATH" -version | head -n 1
+          export ORBITA_RESOURCE_DIR="$RUNNER_TEMP"
+          flutter test --no-pub --concurrency=1 -r expanded test/functional_media_native_test.dart
+      - name: Prove UI controls and project persistence work
+        working-directory: videdit_project
+        timeout-minutes: 12
+        run: flutter test --no-pub --concurrency=1 -r expanded test/functional_persistence_test.dart test/functional_controls_test.dart
+
+  android-ubuntu-release:
+    name: Android V3 release on Ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free runner disk space for Flutter and Gradle
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/powershell /opt/hostedtoolcache/CodeQL
+          docker system prune -af || true
+          sudo apt-get clean
+          df -h /
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Restore verified V3 source
+        run: python ci_patch_v050/prepare_linux_functional_test.py
+      - name: Disable Kotlin incremental caches
+        run: |
+          printf '\nkotlin.incremental=false\nkotlin.incremental.useClasspathSnapshot=false\n' >> videdit_project/android/gradle.properties
+      - name: Resolve packages
+        working-directory: videdit_project
+        run: flutter pub get
+      - name: Create required official launcher icon
+        working-directory: videdit_project
+        run: |
+          dart run flutter_launcher_icons
+          test -s android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+      - name: Analyze V3 sources
+        working-directory: videdit_project
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Build verified Android release APK
+        timeout-minutes: 42
+        working-directory: videdit_project
+        run: flutter build apk --release
+      - name: Check APK, sign hash, and package
+        run: |
+          set -euo pipefail
+          apk="videdit_project/build/app/outputs/flutter-apk/app-release.apk"
+          test -f "$apk"
+          test "$(stat -c%s "$apk")" -gt 1000000
+          unzip -t "$apk" | tail -3
+          mkdir -p videdit_dist
+          cp "$apk" videdit_dist/Orbita_Videdit_0.5.0_V3_Android.apk
+          (cd videdit_dist && sha256sum Orbita_Videdit_0.5.0_V3_Android.apk > Orbita_Videdit_0.5.0_V3_Android.apk.sha256)
+      - name: Publish APK on GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=orbita-videdit-v0.5.0-v3-20261104
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --target orbita-videdit-build-v0.5.0 --title 'Orbita Videdit 0.5.0 V3' --notes 'Archivos verificados para Windows y Android' || gh release view "$tag"
+          fi
+          gh release upload "$tag" videdit_dist/* --clobber
+          gh release view "$tag" --json url,assets

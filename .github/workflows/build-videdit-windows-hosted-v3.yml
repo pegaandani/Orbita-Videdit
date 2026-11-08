@@ -1,0 +1,146 @@
+name: Build Orbita Videdit Windows V3 on GitHub
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - orbita-videdit-build-v0.5.0
+    paths:
+      - '.github/workflows/build-videdit-windows-hosted-v3.yml'
+      - 'ci_patch_v050/**'
+      - 'ci_restore_videdit.cmd'
+      - 'ci_patch/media_import_service.dart'
+permissions:
+  contents: write
+concurrency:
+  group: orbita-videdit-github-hosted-windows-only-v3
+  cancel-in-progress: true
+
+jobs:
+  windows-v3:
+    name: Windows V3 (GitHub-hosted)
+    runs-on: windows-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Restore verified source
+        shell: cmd
+        run: call ci_restore_videdit.cmd
+      - name: Apply current V3 patches
+        shell: cmd
+        run: call ci_patch_v050\apply_functional_v3.cmd
+      - name: Restore all 15 editor font assets
+        shell: cmd
+        run: call ci_patch_v050\download_videdit_fonts.cmd videdit_project
+      - name: Flutter dependencies
+        working-directory: videdit_project
+        shell: pwsh
+        run: flutter pub get
+      - name: Generate official Videdit application icons
+        working-directory: videdit_project
+        shell: pwsh
+        run: |
+          dart run flutter_launcher_icons
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher icon generation failed' }
+          if (!(Test-Path 'windows/runner/resources/app_icon.ico')) { throw 'Windows .ico was not generated' }
+          if (!(Test-Path 'android/app/src/main/res/mipmap-hdpi/ic_launcher.png')) { throw 'Android mipmap ic_launcher missing' }
+      - name: Static analysis
+        working-directory: videdit_project
+        shell: pwsh
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Build Windows release
+        working-directory: videdit_project
+        shell: pwsh
+        run: |
+          flutter config --enable-windows-desktop
+          flutter build windows --release
+          if ($LASTEXITCODE -ne 0) { throw 'Windows release build failed' }
+      - name: Bundle FFmpeg and FFprobe in Windows release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = Join-Path $env:GITHUB_WORKSPACE 'videdit_project\build\windows\x64\runner\Release'
+          if (!(Test-Path $release)) { throw 'Windows release directory missing' }
+          $zip = Join-Path $env:RUNNER_TEMP 'ffmpeg-release-essentials.zip'
+          $temp = Join-Path $env:RUNNER_TEMP 'ffmpeg-bundle'
+          curl.exe -L --fail --retry 3 --silent --show-error -o $zip 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download FFmpeg' }
+          Expand-Archive -Path $zip -DestinationPath $temp -Force
+          foreach ($n in @('ffmpeg.exe', 'ffprobe.exe')) {
+            $src = Get-ChildItem -Path $temp -Filter $n -Recurse -File | Select-Object -First 1
+            if (!$src) { throw "Missing $n in FFmpeg bundle" }
+            Copy-Item $src.FullName (Join-Path $release $n) -Force
+            & (Join-Path $release $n) -version | Select-Object -First 1
+            if ($LASTEXITCODE -ne 0) { throw "$n verification failed" }
+          }
+      - name: Generate real export fixture
+        shell: pwsh
+        run: |
+          $release = Join-Path $env:GITHUB_WORKSPACE 'videdit_project\build\windows\x64\runner\Release'
+          $fixture = Join-Path $env:RUNNER_TEMP 'videdit input with spaces.mp4'
+          & (Join-Path $release 'ffmpeg.exe') -y -f lavfi -i 'color=c=blue:s=320x240:d=1.5:r=24' -c:v libx264 -pix_fmt yuv420p $fixture
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path $fixture)) { throw 'Cannot create export fixture' }
+          "ORBITA_FFMPEG_PATH=$(Join-Path $release 'ffmpeg.exe')" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "ORBITA_TEST_VIDEO=$fixture" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Real FFmpeg and resource ZIP integration smoke test
+        working-directory: videdit_project
+        shell: pwsh
+        timeout-minutes: 19
+        run: |
+          $env:ORBITA_RESOURCE_DIR = $env:RUNNER_TEMP
+          $env:ORBITA_FFPROBE_PATH = (Join-Path (Split-Path $env:ORBITA_FFMPEG_PATH -Parent) 'ffprobe.exe')
+          flutter test --no-pub --concurrency=1 -r expanded test/functional_media_native_test.dart
+          if ($LASTEXITCODE -ne 0) { throw 'Actual MP4 export or resource ZIP import failed' }
+      - name: Package Windows release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $project = Join-Path $env:GITHUB_WORKSPACE 'videdit_project'
+          $release = Join-Path $project 'build\windows\x64\runner\Release'
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'videdit_dist'
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          if (!(Test-Path (Join-Path $release 'OrbitaVidedit.exe'))) { throw 'OrbitaVidedit.exe missing' }
+          $portable = Join-Path $dist 'Orbita_Videdit_0.5.0_V3_Windows_Portable.zip'
+          Compress-Archive -Path (Join-Path $release '*') -DestinationPath $portable -Force
+          (Get-FileHash $portable -Algorithm SHA256).Hash | Out-File "$portable.sha256"
+          $iscc = @('C:\Program Files (x86)\Inno Setup 6\ISCC.exe', 'C:\Program Files\Inno Setup 6\ISCC.exe') | Where-Object {Test-Path $_} | Select-Object -First 1
+          if (!$iscc) {
+            choco install innosetup -y --no-progress
+            $iscc = @('C:\Program Files (x86)\Inno Setup 6\ISCC.exe', 'C:\Program Files\Inno Setup 6\ISCC.exe') | Where-Object {Test-Path $_} | Select-Object -First 1
+          }
+          if ($iscc) {
+            Push-Location $project
+            & $iscc 'installer\OrbitaVidedit.iss'
+            $installer = Join-Path $project 'dist\Orbita_Videdit_0.5.0_Setup.exe'
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $installer)) {
+              Copy-Item $installer (Join-Path $dist 'Orbita_Videdit_0.5.0_V3_Setup.exe')
+              (Get-FileHash (Join-Path $dist 'Orbita_Videdit_0.5.0_V3_Setup.exe') -Algorithm SHA256).Hash | Out-File (Join-Path $dist 'Orbita_Videdit_0.5.0_V3_Setup.exe.sha256')
+            } else { Write-Warning 'Inno installer failed, portable package is still ready' }
+            Pop-Location
+          } else { Write-Warning 'Inno Setup unavailable, portable EXE package is ready' }
+      - name: Publish Windows V3 to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = 'orbita-videdit-v0.5.0-v3-20261104'
+          $repo = $env:GITHUB_REPOSITORY
+          gh release view $tag --repo $repo *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo $repo --target 'orbita-videdit-build-v0.5.0' --title 'Orbita Videdit 0.5.0 V3 GitHub' --notes 'Compilaciones V3 desde GitHub-hosted runners, sin computadora personal.'
+            if ($LASTEXITCODE -ne 0) {
+              gh release view $tag --repo $repo
+              if ($LASTEXITCODE -ne 0) { throw 'Cannot create or find Videdit release' }
+            }
+          }
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'videdit_dist'
+          $assets = Get-ChildItem $dist -File
+          if (!$assets) { throw 'No Windows assets created' }
+          foreach ($file in $assets) {
+            gh release upload $tag $file.FullName --repo $repo --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Failed uploading $($file.Name)" }
+          }
+          gh release view $tag --repo $repo --json url,assets

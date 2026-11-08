@@ -1,0 +1,85 @@
+name: Build Orbita Videdit Android V3 Fast Ubuntu
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - orbita-videdit-build-v0.5.0
+    paths:
+      - '.github/workflows/build-videdit-android-ubuntu-fast.yml'
+      - 'ci_patch_v050/**'
+      - 'ci_patch/media_import_service.dart'
+      - 'ci_restore_videdit.py'
+permissions:
+  contents: write
+concurrency:
+  group: orbita-videdit-android-ubuntu-v3
+  cancel-in-progress: true
+jobs:
+  android-ubuntu:
+    name: Android APK V3 (Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free runner disk space for Flutter and Gradle
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/powershell /opt/hostedtoolcache/CodeQL
+          docker system prune -af || true
+          sudo apt-get clean
+          df -h /
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Reconstruct verified exact source with functional patches and 15 fonts
+        run: python ci_patch_v050/prepare_linux_functional_test.py
+      - name: Disable Kotlin incremental mode for reproducible Android build
+        run: |
+          printf '\nkotlin.incremental=false\nkotlin.incremental.useClasspathSnapshot=false\n' >> videdit_project/android/gradle.properties
+      - name: Get Flutter dependencies
+        working-directory: videdit_project
+        run: flutter pub get
+      - name: Generate Orbitas official Android launcher icon
+        working-directory: videdit_project
+        run: |
+          dart run flutter_launcher_icons
+          test -s android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+      - name: Static analyze V3
+        working-directory: videdit_project
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Compile real Android release APK
+        working-directory: videdit_project
+        timeout-minutes: 45
+        run: flutter build apk --release
+      - name: Verify APK structure and prepare SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="videdit_project/build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$apk"
+          test "$(stat -c%s "$apk")" -gt 1000000
+          unzip -t "$apk" | tail -2
+          mkdir -p videdit_dist
+          cp "$apk" "videdit_dist/Orbita_Videdit_0.5.0_V3_Android.apk"
+          (cd videdit_dist && sha256sum Orbita_Videdit_0.5.0_V3_Android.apk > Orbita_Videdit_0.5.0_V3_Android.apk.sha256)
+          ls -lh videdit_dist/
+      - name: Publish working APK in GitHub Releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='orbita-videdit-v0.5.0-v3-20261104'
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --target orbita-videdit-build-v0.5.0 --title 'Orbita Videdit v0.5.0 V3' --notes 'Compilaciones verificadas de Windows y Android' || gh release view "$tag"
+          fi
+          gh release upload "$tag" videdit_dist/* --clobber
+          gh release view "$tag" --json url,assets

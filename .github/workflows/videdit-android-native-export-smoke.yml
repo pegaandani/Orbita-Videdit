@@ -1,0 +1,56 @@
+name: Videdit Android Native Export Verification
+on:
+  workflow_dispatch:
+  push:
+    branches: [orbita-videdit-build-v0.5.0]
+    paths:
+      - '.github/workflows/videdit-android-native-export-smoke.yml'
+      - 'ci_patch_v050/patch_android_ffmpeg_arguments.py'
+      - 'ci_patch_v050/patch_android_export_reliability.py'
+      - 'ci_patch_v050/patch_version_60.py'
+      - 'android_native_export_integration_test.dart'
+permissions:
+  contents: read
+concurrency:
+  group: videdit-android-native-export-smoke
+  cancel-in-progress: true
+jobs:
+  android-real-export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/powershell /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af || true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Rebuild production source with Android fixes
+        run: python ci_patch_v050/prepare_linux_functional_test.py
+      - name: Add Flutter instrumentation dependencies
+        working-directory: videdit_project
+        run: |
+          flutter pub add --dev integration_test --sdk flutter
+          mkdir -p integration_test
+          cp ../android_native_export_integration_test.dart integration_test/android_native_export_test.dart
+          flutter pub get
+      - name: Enable KVM acceleration
+        run: |
+          sudo chmod 666 /dev/kvm || true
+      - name: Test FFmpeg on real Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: cd videdit_project && flutter test -d emulator-5554 integration_test/android_native_export_test.dart -r expanded
