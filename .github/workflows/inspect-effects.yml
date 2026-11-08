@@ -1,0 +1,42 @@
+name: Inspect video effect paths
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-effects.yml'
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Reconstruct patched editor and inspect relevant paths
+        run: |
+          python ci_patch_v050/prepare_linux_functional_test.py
+          python - <<'PY'
+          from pathlib import Path
+          root=Path('videdit_project/lib')
+          for rel,parts in [
+            ('features/editor/widgets/effects_panel.dart',[]),
+            ('features/editor/widgets/transitions_panel.dart',[]),
+            ('core/services/timeline_render_service.dart',['_effectFilters(', 'fade=t=out','_transitionFor(', '_fitFilters(', '_drawText(', 'for (final effect in c.effects)']),
+            ('features/editor/editor_screen.dart',['Widget _applyPreviewEffects(', 'Widget _previewTextWidget('])
+          ]:
+            lines=(root/rel).read_text().splitlines()
+            print('FILE',rel,'LINES',len(lines))
+            if not parts:
+              for i,line in enumerate(lines):
+                print(f'{i+1}: {line}')
+            else:
+              ix=set()
+              for i,line in enumerate(lines):
+                if any(p in line for p in parts):
+                  ix.update(range(max(0,i-12), min(len(lines),i+100)))
+              for i in sorted(ix):print(f'{i+1}: {lines[i]}')
+          PY
