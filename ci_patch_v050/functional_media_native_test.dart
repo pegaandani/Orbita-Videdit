@@ -92,6 +92,55 @@ void main() {
     }
     stdout.writeln('PASS: native FFmpeg exported and verified a playable MP4 with stacked effects.');
 
+    // Regression: an outro must fade at the end of the clip's ABSOLUTE
+    // timeline placement, and the intensity control must change MP4 pixels.
+    Future<int> sampleBrightness(String file, String timestamp) async {
+      final sample = await Process.run(ffmpeg, [
+        '-v', 'error', '-ss', timestamp, '-i', file,
+        '-frames:v', '1', '-vf', 'scale=1:1',
+        '-pix_fmt', 'gray', '-f', 'rawvideo', 'pipe:1',
+      ], stdoutEncoding: null, runInShell: false);
+      if (sample.exitCode != 0 || sample.stdout is! List<int> ||
+          (sample.stdout as List<int>).isEmpty) {
+        throw StateError('Cannot sample exported MP4 frame at $timestamp: ' +
+          sample.stderr.toString());
+      }
+      return (sample.stdout as List<int>).first;
+    }
+
+    Future<File> renderOutro(double strength, String suffix) async {
+      final outroProject = OrbitaProject.empty();
+      outroProject.exportSettings
+        ..width = 320
+        ..height = 240
+        ..fps = 24;
+      outroProject.primaryTrack.clips.add(TimelineClip(
+        id: 'outro-$suffix', name: 'Outgoing fade with full-clip effects',
+        sourcePath: input.path, kind: 'video', startMs: 500,
+        durationMs: 1200, hasAudio: false,
+        effects: <Map<String,dynamic>>[
+          {'type':'grain','amount': 5.0},
+          {'type':'outroFade','duration': .4,'intensity':strength},
+        ],
+      ));
+      final target = File(sandbox.path + sep + 'outro-$suffix.mp4');
+      await TimelineRenderService().renderPrimaryVideoTrack(outroProject,target.path);
+      if (!await target.exists() || await target.length() < 1000) {
+        throw StateError('Outro MP4 was not created: $suffix');
+      }
+      return target;
+    }
+    final fullOutro = await renderOutro(1.0, 'full');
+    final noOutro = await renderOutro(0.0, 'zero');
+    final early = await sampleBrightness(fullOutro.path, '0.90');
+    final late = await sampleBrightness(fullOutro.path, '1.62');
+    final noFadeLate = await sampleBrightness(noOutro.path, '1.62');
+    if (early <= late + 10 || noFadeLate <= late + 10) {
+      throw StateError('Outgoing effect did not change the actual encoded end frames: '
+          'early=$early late=$late noFadeLate=$noFadeLate');
+    }
+    stdout.writeln('PASS: late outro fade applies to timeline-offset clips and intensity slider changes encoded MP4 frame values.');
+
     // A legitimate stock ZIP installs media, ignores unrelated README and
     // executable files, and imports its contents as local Videdit assets.
     final pack = Archive();
