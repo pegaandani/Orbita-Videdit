@@ -27,6 +27,7 @@ subprocess.run(["python", str(b/"patch_android_export_reliability.py"), str(root
 subprocess.run(["python", str(b/"patch_version_60.py"), str(root)], check=True)
 subprocess.run(["python", str(b/"patch_android_ffmpeg_arguments.py"), str(root)], check=True)
 subprocess.run(["python", str(b/"patch_effect_timing_and_intensity.py"), str(root)], check=True)
+subprocess.run(["python", str(b/"patch_effect_strength_consistency.py"), str(root)], check=True)
 (root/"tool").mkdir(exist_ok=True)
 shutil.copyfile(b/"functional_media_cli.dart",root/"tool"/"functional_media_cli.dart")
 (root/"test").mkdir(exist_ok=True)
