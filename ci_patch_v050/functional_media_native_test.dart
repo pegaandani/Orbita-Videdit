@@ -108,7 +108,7 @@ void main() {
       return (sample.stdout as List<int>).first;
     }
 
-    Future<File> renderOutro(double strength, String suffix) async {
+    Future<File> renderOutro(double strength, String suffix, {String style = 'fade'}) async {
       final outroProject = OrbitaProject.empty();
       outroProject.exportSettings
         ..width = 320
@@ -120,7 +120,7 @@ void main() {
         durationMs: 1200, hasAudio: false,
         effects: <Map<String,dynamic>>[
           {'type':'grain','amount': 5.0},
-          {'type':'outroFade','duration': .4,'intensity':strength},
+          {'type':'outroFade','duration': .4,'intensity':strength,'style':style},
         ],
       ));
       final target = File(sandbox.path + sep + 'outro-$suffix.mp4');
@@ -130,7 +130,14 @@ void main() {
       }
       return target;
     }
-    final fullOutro = await renderOutro(1.0, 'full');
+    final fullOutro = await renderOutro(1.0, 'full', style: 'zoomOut');
+    final slideLeftOutro = await renderOutro(1.0, 'slide-left', style: 'slideLeft');
+    final slideRightOutro = await renderOutro(1.0, 'slide-right', style: 'slideRight');
+    final spinOutro = await renderOutro(1.0, 'spin', style: 'spinOut');
+    if (!await slideLeftOutro.exists() || !await slideRightOutro.exists() ||
+        !await spinOutro.exists()) {
+      throw StateError('One or more exit animations did not export.');
+    }
     final noOutro = await renderOutro(0.0, 'zero');
     final early = await sampleBrightness(fullOutro.path, '0.90');
     final late = await sampleBrightness(fullOutro.path, '1.62');
