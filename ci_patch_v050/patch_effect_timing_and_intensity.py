@@ -34,7 +34,7 @@ replace_one(panel,
                 ),
                 Row(children: [
                   const Expanded(child: Text('Intensidad del cierre')),
-                  Text('\${(intensity * 100).round()} %'),
+                  Text('${(intensity * 100).round()} %'),
                 ]),
                 Slider(
                   value: intensity, min: 0, max: 1,
@@ -50,13 +50,13 @@ replace_one(panel,
 # A geq alpha curve supports any fade strength and preserves RGB.
 replace_one(renderer,
 """          final fadeStart = math.max(0.0, clipSeconds - fadeSeconds);
-          vf.add("fade=t=out:st=\${_n(fadeStart)}:d=\${_n(fadeSeconds)}:alpha=1");""",
+          vf.add("fade=t=out:st=${_n(fadeStart)}:d=${_n(fadeSeconds)}:alpha=1");""",
 """          final fadeStart = math.max(0.0, c.endMs / 1000.0 - fadeSeconds);
           final strength = ((outro.first['intensity'] as num?)?.toDouble() ?? 1.0)
               .clamp(0.0, 1.0).toDouble();
           if (strength > 0.0001) {
-            final progress = "max(0,min(1,(T-\${_n(fadeStart)})/\${_n(fadeSeconds)}))";
-            vf.add("geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(1-\${_n(strength)}*($progress))'");
+            final progress = "max(0,min(1,(T-${_n(fadeStart)})/${_n(fadeSeconds)}))";
+            vf.add("geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*(1-${_n(strength)}*($progress))'");
           }""")
 
 # Match Android/iOS/desktop preview to rendered intensity and duration.
