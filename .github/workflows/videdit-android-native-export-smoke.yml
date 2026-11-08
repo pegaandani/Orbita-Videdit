@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/videdit-android-native-export-smoke.yml'
-      - 'ci_patch_v050/patch_android_ffmpeg_arguments.py'
+      - 'ci_patch_v050/**'
       - 'ci_patch_v050/patch_android_export_reliability.py'
       - 'ci_patch_v050/patch_version_60.py'
       - 'android_native_export_integration_test.dart'

@@ -43,7 +43,7 @@ void main() {
         {'type':'grain', 'amount':3.0},
         {'type':'vignette', 'strength':3.0},
         {'type':'transition', 'id':'fadeBlack', 'duration':.2},
-        {'type':'outroFade', 'duration':.2},
+        {'type':'outroFade', 'duration':.2, 'intensity':.75, 'style':'zoomOut'},
       ],
     ));
     await TimelineRenderService().renderPrimaryVideoTrack(project, out.path)
